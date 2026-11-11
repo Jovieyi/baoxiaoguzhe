@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>医疗费用报销与发票对账管理系统</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif; }
+    .font-mono { font-family: 'JetBrains Mono', monospace; font-variant-numeric: tabular-nums; }
+    @media print {
+      header, footer, button, select, input, .no-print { display: none !important; }
+      body { background: white !important; color: black !important; }
+      table { border-collapse: collapse !important; width: 100% !important; }
+      th, td { border: 1px solid #cbd5e1 !important; }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased min-h-screen flex flex-col">
+
+  <!-- 顶部主导航栏 -->
+  <header class="sticky top-0 z-30 bg-white border-b border-slate-200 shadow-sm no-print">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between gap-6 h-16">
+        <div class="flex items-center gap-3">
+          <div class="w-8 h-8 rounded-lg bg-blue-600 text-white font-bold flex items-center justify-center text-sm">
+            医
+          </div>
+          <div>
+            <span class="text-base font-bold text-slate-900 block leading-tight">医疗报销发票核对系统</span>
+            <span class="text-xs text-slate-500 font-normal">医保与公司双轨核算台账 (离线独立版)</span>
+          </div>
+        </div>
+
+        <!-- 导航切换: 仅保留 发票台账 与 深度对账 -->
+        <nav class="hidden md:flex items-center gap-6 text-sm font-medium">
+          <button onclick="switchTab('ledger')" id="nav-ledger" class="nav-btn pb-1 text-blue-600 font-semibold border-b-2 border-blue-600 transition-colors">
+            发票明细台账
+          </button>
+          <button onclick="switchTab('reconciliation')" id="nav-reconciliation" class="nav-btn pb-1 text-slate-600 hover:text-slate-900 border-b-2 border-transparent transition-colors">
+            医保与公司对账穿透
+          </button>
+        </nav>
+
+        <!-- 工具按钮 -->
+        <div class="flex items-center gap-2">
+          <button onclick="openAddModal()" class="px-3 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 rounded-md transition-colors shadow-xs">
+            + 添加发票
+          </button>
+          <button onclick="exportCsv()" class="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-md transition-colors">
+            导出表格
+          </button>
+          <button onclick="window.print()" class="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-md transition-colors">
+            打印台账
+          </button>
+          <button onclick="resetData()" class="px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-700 rounded-md transition-colors">
+            恢复初始
+          </button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- 主视图容器 -->
+  <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
+    <!-- 顶部常驻核心对账卡片 (实时联动) -->
+    <div class="bg-white border border-slate-200 rounded-xl p-5 mb-6 shadow-xs">
+      <div class="flex flex-col md:flex-row md:items-center justify-between pb-4 border-b border-slate-100 gap-4">
+        <div>
+          <div class="text-xs text-slate-500 mb-1">对账核算模型 · 医保统筹与伙食补贴 · 公司陪护与转运台账</div>
+          <h2 class="text-xl font-bold text-slate-900">医保报销、伙食补贴与公司报销穿透对账总览</h2>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg">
+            <span>✓ 实时动态核算联动</span>
+          </span>
+        </div>
+      </div>
+
+      <!-- 4项核心指标 (动态响应增删发票) -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 py-4 border-b border-slate-100">
+        <div class="bg-slate-50 border border-slate-100 rounded-lg p-4">
+          <div class="text-xs text-slate-500 mb-1">全部就医发票总额</div>
+          <div class="text-2xl font-bold font-mono text-slate-900" id="card-total-sum">¥156,157.60</div>
+          <div class="text-xs text-slate-500 mt-1" id="card-total-count">共 18 笔明细</div>
+        </div>
+
+        <div class="bg-emerald-50/50 border border-emerald-100 rounded-lg p-4">
+          <div class="text-xs text-emerald-800 mb-1">医保合计到账 (含伙食补贴)</div>
+          <div class="text-2xl font-bold font-mono text-emerald-700">¥147,432.30</div>
+          <div class="text-xs text-slate-600 mt-1">统筹 ¥146,232.30 + <span class="font-semibold text-emerald-700">补贴 ¥1,200.00</span></div>
+        </div>
+
+        <div class="bg-blue-50/50 border border-blue-100 rounded-lg p-4">
+          <div class="text-xs text-blue-800 mb-1">公司实报款项 (护工+救护车)</div>
+          <div class="text-2xl font-bold font-mono text-blue-700" id="card-company-sum">¥7,989.50</div>
+          <div class="text-xs text-slate-600 mt-1" id="card-company-count">全额核销到位</div>
+        </div>
+
+        <div class="bg-slate-50 border border-slate-100 rounded-lg p-4">
+          <div class="text-xs text-slate-700 mb-1">个人实际净支出 (自费部分)</div>
+          <div class="text-2xl font-bold font-mono text-slate-900" id="card-net-out">¥735.80</div>
+          <div class="text-xs text-emerald-700 mt-1 font-medium">伙食补贴对冲后净支出</div>
+        </div>
+      </div>
+
+      <!-- 医保差额 5,310.30 深度穿透 -->
+      <div class="mt-4 bg-linear-to-r from-amber-50/60 to-slate-50 border border-amber-200/80 rounded-xl p-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <h3 class="text-base font-bold text-slate-900">医保提交金额与实际到账差额说明 (5,310.30元 来源拆解)</h3>
+          <span class="font-mono text-xs font-semibold text-amber-900">
+            公式: 提交 ¥151,542.60 - 实报 ¥146,232.30 = 差额 ¥5,310.30
+          </span>
+        </div>
+        <p class="text-xs text-slate-600 mt-1">医保局扣除的 <strong>5,310.30元</strong> 并非全部由个人损失，核心是由以下三项构成：</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3 text-xs">
+          <div class="bg-white border border-amber-200 rounded-lg p-3">
+            <div class="flex items-center justify-between font-semibold text-slate-800 mb-1">
+              <span>1. 金山护工费 (转公司报销)</span>
+              <span class="text-emerald-700">公司已兜底</span>
+            </div>
+            <div class="text-lg font-bold font-mono text-amber-700">¥3,482.50</div>
+            <p class="text-slate-500 mt-1">金山医院将护工费与住院费合并打在同一张大单(11,635.04元)送审。医保扣除后由公司全额报销。</p>
+          </div>
+
+          <div class="bg-white border border-slate-200 rounded-lg p-3">
+            <div class="flex items-center justify-between font-semibold text-slate-800 mb-1">
+              <span>2. 三次住院自费伙食费</span>
+              <span class="text-slate-500">政策性自费</span>
+            </div>
+            <div class="text-lg font-bold font-mono text-slate-800">¥588.80</div>
+            <p class="text-slate-500 mt-1">六院16元 + 八院29.5元 + 金山543.3元。医保额外发放1200元伙食补贴，已完全覆盖。</p>
+          </div>
+
+          <div class="bg-white border border-slate-200 rounded-lg p-3">
+            <div class="flex items-center justify-between font-semibold text-slate-800 mb-1">
+              <span>3. 医院自费药品/耗材</span>
+              <span class="text-slate-500">医保目录外</span>
+            </div>
+            <div class="text-lg font-bold font-mono text-slate-800">¥1,239.00</div>
+            <p class="text-slate-500 mt-1">5,310.30 - 3,482.50(护工) - 588.80(伙食) = 1,239.00元。金山医院自负项目。</p>
+          </div>
+        </div>
+
+        <div class="mt-3 pt-3 border-t border-amber-200/60 flex flex-wrap items-center justify-between text-xs text-slate-600 gap-2">
+          <span>核对校验: 护工 ¥3,482.50 + 伙食 ¥588.80 + 医院自费 ¥1,239.00 = <strong class="font-mono text-slate-900">¥5,310.30 </strong></span>
+          <span class="text-emerald-700 font-medium">✓ 账目结构清晰，无不明扣费</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 标签视图 1: 发票明细台账 (支持选择、添加、删除) -->
+    <div id="view-ledger">
+      <!-- 批量选择与操作工具栏 -->
+      <div class="bg-white border border-slate-200 rounded-xl p-4 mb-4 shadow-xs space-y-3">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div class="flex items-center gap-3">
+            <button onclick="toggleSelectAllFiltered()" class="px-2.5 py-1 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md">
+              <span id="btn-select-all-text">全选当前列表</span>
+            </button>
+            <div id="bulk-action-bar" class="hidden items-center gap-2">
+              <span class="text-xs text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded font-medium">
+                已选中 <strong id="selected-count">0</strong> 笔 · 选中金额: <span id="selected-sum" class="font-mono font-bold">¥0.00</span>
+              </span>
+              <button onclick="batchDeleteSelected()" class="px-2.5 py-1 text-xs font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-md">
+                批量删除
+              </button>
+            </div>
+          </div>
+
+          <div class="inline-flex p-1 bg-slate-100 rounded-lg overflow-x-auto text-xs">
+            <button onclick="setAttributionFilter('all')" id="btn-attr-all" class="attr-btn px-3 py-1.5 font-medium rounded-md bg-white text-slate-900 shadow-xs">
+              全部单据
+            </button>
+            <button onclick="setAttributionFilter('medical')" id="btn-attr-medical" class="attr-btn px-3 py-1.5 font-medium rounded-md text-slate-600 hover:text-slate-900">
+              🏥 医保报销
+            </button>
+            <button onclick="setAttributionFilter('company')" id="btn-attr-company" class="attr-btn px-3 py-1.5 font-medium rounded-md text-slate-600 hover:text-slate-900">
+              🏢 公司报销
+            </button>
+            <button onclick="setAttributionFilter('dual')" id="btn-attr-dual" class="attr-btn px-3 py-1.5 font-medium rounded-md text-slate-600 hover:text-slate-900">
+              🔄 双方关联/并票
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+          <input type="text" id="filter-search" oninput="applyFilters()" placeholder="搜索发票标识、摘要、备注..." class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+          <select id="filter-institution" onchange="applyFilters()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+            <option value="all">全部机构</option>
+            <option value="六院">六院</option>
+            <option value="八院">八院</option>
+            <option value="金山医院">金山医院</option>
+            <option value="救护车">救护车</option>
+          </select>
+          <select id="filter-category" onchange="applyFilters()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+            <option value="all">全部类别</option>
+            <option value="住院手术">住院及手术</option>
+            <option value="护工陪护">护工陪护</option>
+            <option value="救护车转运">救护车转运</option>
+            <option value="门急诊挂号">门急诊挂号</option>
+            <option value="检验拍片">检验拍片</option>
+            <option value="急诊处置">急诊处置</option>
+          </select>
+          <select id="filter-status" onchange="applyFilters()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+            <option value="all">全部执行状态</option>
+            <option value="medical_reimbursed">医保已到账</option>
+            <option value="company_reimbursed">公司已全额报销</option>
+            <option value="not_submitted">确认未交</option>
+          </select>
+        </div>
+
+        <div class="flex items-center justify-between text-xs text-slate-500 pt-1">
+          <div>当前筛选: <span id="filtered-count" class="font-semibold text-slate-900">18</span> 笔 ｜ 筛选小计: <span id="filtered-sum" class="font-mono font-bold text-slate-900">¥156,157.60</span></div>
+          <button onclick="resetFilters()" class="text-blue-600 hover:underline">清除筛选</button>
+        </div>
+      </div>
+
+      <!-- 数据表格 -->
+      <div class="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-xs">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-xs">
+            <thead>
+              <tr class="bg-slate-50 border-b border-slate-200 text-slate-700 font-semibold text-[11px]">
+                <th class="py-3 px-3 text-center w-10">
+                  <input type="checkbox" id="header-select-all" onchange="toggleSelectAllFiltered()" class="rounded h-3.5 w-3.5">
+                </th>
+                <th class="py-3 px-3 text-center w-12">序号</th>
+                <th class="py-3 px-3">发票标识</th>
+                <th class="py-3 px-3">日期</th>
+                <th class="py-3 px-3">机构</th>
+                <th class="py-3 px-3">类别</th>
+                <th class="py-3 px-4 min-w-[180px]">项目摘要</th>
+                <th class="py-3 px-4 text-right font-mono">金额(元)</th>
+                <th class="py-3 px-3">报销归属</th>
+                <th class="py-3 px-4 min-w-[180px]">报销执行状态</th>
+                <th class="py-3 px-3">备注</th>
+                <th class="py-3 px-3 text-center w-20">操作</th>
+              </tr>
+            </thead>
+            <tbody id="invoice-tbody" class="divide-y divide-slate-100"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 标签视图 2: 深度对账穿透 -->
+    <div id="view-reconciliation" class="hidden space-y-6">
+      <div class="bg-white border border-slate-200 rounded-xl p-6 shadow-xs">
+        <h3 class="text-base font-bold text-slate-900 mb-3">医保统筹、伙食补贴与公司报销计算全流程</h3>
+        <div class="space-y-3 text-xs font-mono">
+          <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between">
+            <span class="text-slate-700">1. 送审医保总票面金额 (扣除80元未交胶片后):</span>
+            <span class="font-bold text-slate-900 text-sm">¥151,542.60</span>
+          </div>
+          <div class="p-3 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between">
+            <span class="text-slate-700">2. 医保局终审统筹报销到账:</span>
+            <span class="font-bold text-emerald-700 text-sm">¥146,232.30</span>
+          </div>
+          <div class="p-3 bg-emerald-50 border border-emerald-200 rounded-lg flex items-center justify-between font-bold">
+            <span class="text-emerald-900">3. 医保局额外发放住院伙食补贴:</span>
+            <span class="text-emerald-700 text-sm">+¥1,200.00</span>
+          </div>
+          <div class="p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center justify-between font-bold">
+            <span class="text-blue-900">4. 公司全额报销到账 (救护车+护工陪护费):</span>
+            <span class="text-blue-700 text-sm">+¥7,989.50</span>
+          </div>
+          <div class="p-3 bg-slate-100 border border-slate-300 rounded-lg flex items-center justify-between font-bold text-sm">
+            <span class="text-slate-900">5. 全部回款合计 (医保统筹 + 伙食补贴 + 公司报销):</span>
+            <span class="text-indigo-700">¥155,421.80</span>
+          </div>
+          <div class="p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center justify-between font-bold">
+            <span class="text-amber-900">6. 个人最终净支出 (总发票156,157.60 - 全部回款155,421.80):</span>
+            <span class="text-amber-800 text-base">仅 ¥735.80</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- 添加/编辑发票弹窗 -->
+  <div id="modal-add" class="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs hidden items-center justify-center p-4">
+    <div class="bg-white rounded-xl border border-slate-200 shadow-xl max-w-lg w-full p-5 space-y-4 text-xs">
+      <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+        <h4 class="text-base font-bold text-slate-900">添加新发票记录</h4>
+        <button onclick="closeAddModal()" class="text-slate-400 hover:text-slate-600">✕</button>
+      </div>
+      <form onsubmit="handleFormSubmit(event)" class="space-y-3">
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-medium mb-1">标识/发票名称</label>
+            <input type="text" id="add-label" required placeholder="例如: 门诊复查" class="w-full px-3 py-2 bg-slate-50 border rounded-lg">
+          </div>
+          <div>
+            <label class="block font-medium mb-1">发生日期</label>
+            <input type="text" id="add-date" required placeholder="例如: 10月15日" class="w-full px-3 py-2 bg-slate-50 border rounded-lg">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-medium mb-1">就诊/服务机构</label>
+            <input type="text" id="add-institution" required placeholder="例如: 六院" class="w-full px-3 py-2 bg-slate-50 border rounded-lg">
+          </div>
+          <div>
+            <label class="block font-medium mb-1">票面金额 (元)</label>
+            <input type="number" step="0.01" id="add-amount" required placeholder="0.00" class="w-full px-3 py-2 bg-slate-50 border rounded-lg font-mono font-bold">
+          </div>
+        </div>
+        <div>
+          <label class="block font-medium mb-1">项目摘要</label>
+          <input type="text" id="add-summary" required placeholder="例如: 骨科复查拍片" class="w-full px-3 py-2 bg-slate-50 border rounded-lg">
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block font-medium mb-1">报销归属</label>
+            <select id="add-attribution" class="w-full px-3 py-2 bg-slate-50 border rounded-lg">
+              <option value="medical">🏥 医保报销</option>
+              <option value="company">🏢 公司报销</option>
+              <option value="dual">🔄 双方关联并票</option>
+            </select>
+          </div>
+          <div>
+            <label class="block font-medium mb-1">费用类别</label>
+            <select id="add-category" class="w-full px-3 py-2 bg-slate-50 border rounded-lg">
+              <option value="住院手术">住院及手术</option>
+              <option value="护工陪护">护工陪护</option>
+              <option value="救护车转运">救护车转运</option>
+              <option value="门急诊挂号">门急诊挂号</option>
+              <option value="检验拍片">检验拍片</option>
+              <option value="急诊处置">急诊处置</option>
+            </select>
+          </div>
+        </div>
+        <div>
+          <label class="block font-medium mb-1">备注说明</label>
+          <input type="text" id="add-notes" placeholder="选填备注..." class="w-full px-3 py-2 bg-slate-50 border rounded-lg">
+        </div>
+        <div class="pt-3 border-t border-slate-100 flex justify-end gap-2">
+          <button type="button" onclick="closeAddModal()" class="px-4 py-1.5 border rounded-lg">取消</button>
+          <button type="submit" class="px-4 py-1.5 bg-blue-600 text-white rounded-lg font-medium">确认添加</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <footer class="bg-white border-t border-slate-200 py-4 text-center text-xs text-slate-400 no-print">
+    医疗费用报销台账系统 · 单文件独立离线版
+  </footer>
+
+  <script>
+    const INITIAL_DATA = [
+      { id: 1, label: "救护车1", date: "8月12日", institution: "救护车", category: "救护车转运", summary: "朱泾-六院出车转运", amount: 467.00, attribution: "company", notes: "救护车费用", status: { med: "not_applicable", comp: "reimbursed" } },
+      { id: 2, label: "急诊1", date: "8月12日", institution: "六院", category: "门急诊挂号", summary: "急诊挂号", amount: 30.00, attribution: "medical", notes: "门急诊费用", status: { med: "reimbursed", comp: "not_applicable" } },
+      { id: 3, label: "急诊2", date: "8月12日", institution: "六院", category: "检验拍片", summary: "急诊拍片 (DR创伤摄片)", amount: 847.80, attribution: "medical", notes: "影像检查", status: { med: "reimbursed", comp: "not_applicable" } },
+      { id: 4, label: "急诊3", date: "8月13日", institution: "六院", category: "检验拍片", summary: "急诊检查 (检验/CT)", amount: 1694.24, attribution: "medical", notes: "诊疗检验", status: { med: "reimbursed", comp: "not_applicable" } },
+      { id: 5, label: "急诊4", date: "8月13日", institution: "六院", category: "急诊处置", summary: "急诊肌肉注射", amount: 6.00, attribution: "medical", notes: "注射处置", status: { med: "reimbursed", comp: "not_applicable" } },
+      { id: 6, label: "急诊5", date: "8月13日", institution: "六院", category: "急诊处置", summary: "急诊牵引复位固定", amount: 390.00, attribution: "medical", notes: "复位固定", status: { med: "reimbursed", comp: "not_applicable" } },
+      { id: 7, label: "急诊6", date: "8月13日", institution: "六院", category: "检验拍片", summary: "急诊胶片打印", amount: 80.00, attribution: "medical", notes: "胶片工本 (已确认未提交医保)", status: { med: "not_submitted", comp: "not_applicable" } },
+      { id: 8, label: "六院手术", date: "8月13日-16日", institution: "六院", category: "住院手术", summary: "住院+外固定手术", amount: 61913.25, attribution: "medical", notes: "含伙食费16元", mealExpense: 16.00, status: { med: "reimbursed", comp: "not_applicable" } },
+      { id: 9, label: "六院护工费", date: "8月13日-16日", institution: "六院", category: "护工陪护", summary: "护工费4天", amount: 1200.00, attribution: "company", notes: "护工陪护费 (300元/天)", status: { med: "not_applicable", comp: "reimbursed" } },
+      { id: 10, label: "救护车2", date: "8月17日", institution: "救护车", category: "救护车转运", summary: "六院-八院转院运送", amount: 110.00, attribution: "company", notes: "救护车费用", status: { med: "not_applicable", comp: "reimbursed" } },
+      { id: 11, label: "八院挂号", date: "9月7日", institution: "八院", category: "门急诊挂号", summary: "挂号费", amount: 31.00, attribution: "medical", notes: "门诊挂号 (已送审平账)", status: { med: "reimbursed", comp: "not_applicable" } },
+      { id: 12, label: "八院住院", date: "9月7日", institution: "八院", category: "住院手术", summary: "住院总共费用结算单", amount: 74770.27, attribution: "medical", notes: "含伙食费29.5元", mealExpense: 29.50, status: { med: "reimbursed", comp: "not_applicable" } },
+      { id: 13, label: "八院护工1", date: "8月16日-9月4日", institution: "八院", category: "护工陪护", summary: "护工费18天", amount: 2340.00, attribution: "company", notes: "护工陪护费 (130元/天)", status: { med: "not_applicable", comp: "reimbursed" } },
+      { id: 14, label: "八院护工2", date: "9月5日-9月7日", institution: "八院", category: "护工陪护", summary: "护工费3天", amount: 390.00, attribution: "company", notes: "护工陪护费 (130元/天)", status: { med: "not_applicable", comp: "reimbursed" } },
+      { id: 15, label: "金山挂号", date: "9月7日", institution: "金山医院", category: "门急诊挂号", summary: "挂号费", amount: 30.00, attribution: "medical", notes: "门诊挂号", status: { med: "reimbursed", comp: "not_applicable" } },
+      { id: 16, label: "金山护工", date: "9月8日", institution: "金山医院", category: "护工陪护", summary: "护工费用 (并入住院总票11635.04元)", amount: 3482.50, attribution: "dual", notes: "护工陪护费 (与住院共一张总票，医保剔除后由公司报销)", status: { med: "deducted", comp: "reimbursed" } },
+      { id: 17, label: "金山住院", date: "9月8日", institution: "金山医院", category: "住院手术", summary: "住院总结算单 (含伙食543.3元)", amount: 8152.54, attribution: "dual", notes: "含伙食费543.3元 (与护工共一张总票11635.04元)", mealExpense: 543.30, status: { med: "reimbursed", comp: "not_applicable" } },
+      { id: 18, label: "金山拍片", date: "10月5日", institution: "金山医院", category: "检验拍片", summary: "拍片复查 (DR摄片)", amount: 225.00, attribution: "medical", notes: "拍片复查", status: { med: "reimbursed", comp: "not_applicable" } }
+    ];
+
+    let invoices = JSON.parse(localStorage.getItem('standalone_invoices_v4')) || INITIAL_DATA;
+    let selectedIds = [];
+    let currentAttributionFilter = 'all';
+
+    function saveState() {
+      localStorage.setItem('standalone_invoices_v4', JSON.stringify(invoices));
+      updateCardStats();
+      renderTable();
+    }
+
+    function updateCardStats() {
+      const sum = invoices.reduce((acc, i) => acc + i.amount, 0);
+      const compSum = invoices
+        .filter(i => i.attribution === 'company' || i.id === 16)
+        .reduce((acc, i) => acc + i.amount, 0);
+      const medReimbursed = 146232.30;
+      const mealSubsidy = 1200.00;
+      const netOut = sum - medReimbursed - mealSubsidy - compSum;
+
+      document.getElementById('card-total-sum').innerText = '¥' + sum.toLocaleString('zh-CN', { minimumFractionDigits: 2 });
+      document.getElementById('card-total-count').innerText = `共 ${invoices.length} 笔明细`;
+      document.getElementById('card-company-sum').innerText = '¥' + compSum.toLocaleString('zh-CN', { minimumFractionDigits: 2 });
+      document.getElementById('card-net-out').innerText = '¥' + netOut.toLocaleString('zh-CN', { minimumFractionDigits: 2 });
+    }
+
+    function renderTable() {
+      const q = (document.getElementById('filter-search')?.value || '').toLowerCase().trim();
+      const inst = document.getElementById('filter-institution')?.value || 'all';
+      const cat = document.getElementById('filter-category')?.value || 'all';
+      const stat = document.getElementById('filter-status')?.value || 'all';
+
+      const filtered = invoices.filter(item => {
+        if (currentAttributionFilter !== 'all' && item.attribution !== currentAttributionFilter) return false;
+        if (inst !== 'all' && item.institution !== inst) return false;
+        if (cat !== 'all' && item.category !== cat) return false;
+        if (stat === 'medical_reimbursed' && item.status.med !== 'reimbursed') return false;
+        if (stat === 'company_reimbursed' && item.status.comp !== 'reimbursed') return false;
+        if (stat === 'not_submitted' && item.status.med !== 'not_submitted') return false;
+
+        if (q) {
+          const match = item.label.toLowerCase().includes(q) || item.summary.toLowerCase().includes(q) || item.notes.toLowerCase().includes(q);
+          if (!match) return false;
+        }
+        return true;
+      });
+
+      const tbody = document.getElementById('invoice-tbody');
+      tbody.innerHTML = '';
+
+      filtered.forEach(item => {
+        const isChecked = selectedIds.includes(item.id);
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50 transition-colors' + (isChecked ? ' bg-blue-50/40' : item.attribution === 'dual' ? ' bg-amber-50/20' : '');
+        tr.innerHTML = `
+          <td class="py-3 px-3 text-center">
+            <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleSelect(${item.id})" class="rounded h-3.5 w-3.5">
+          </td>
+          <td class="py-3 px-3 text-center font-mono font-medium text-slate-500">${item.id}</td>
+          <td class="py-3 px-3 font-semibold text-slate-900">${item.label} ${item.attribution === 'dual' ? '<span class="text-[10px] text-amber-700 bg-amber-100 px-1 rounded">并票</span>' : ''}</td>
+          <td class="py-3 px-3 font-mono text-slate-600">${item.date}</td>
+          <td class="py-3 px-3 text-slate-700">${item.institution}</td>
+          <td class="py-3 px-3 text-slate-500">${item.category}</td>
+          <td class="py-3 px-4 font-medium text-slate-900">${item.summary}</td>
+          <td class="py-3 px-4 text-right font-mono font-bold text-slate-900 tabular-nums">¥${item.amount.toFixed(2)}</td>
+          <td class="py-3 px-3">
+            <span class="font-medium ${item.attribution === 'company' ? 'text-blue-700' : item.attribution === 'medical' ? 'text-emerald-700' : 'text-amber-700'}">
+              ${item.attribution === 'company' ? '🏢 公司报销' : item.attribution === 'medical' ? '🏥 医保报销' : '🔄 双方关联并票'}
+            </span>
+          </td>
+          <td class="py-3 px-4 text-slate-600">
+            ${item.status.med === 'reimbursed' ? '<span class="text-emerald-700">✓ 医保已报销</span>' : ''}
+            ${item.status.med === 'deducted' ? '<span class="text-amber-700">⚠ 医保审核剔除</span>' : ''}
+            ${item.status.med === 'not_submitted' ? '<span class="text-rose-600 font-semibold">✕ 确认未交</span>' : ''}
+            ${item.status.comp === 'reimbursed' ? ' ｜ <span class="text-blue-700">✓ 公司全额报销</span>' : ''}
+          </td>
+          <td class="py-3 px-3 text-slate-500">${item.notes}</td>
+          <td class="py-3 px-3 text-center">
+            <button onclick="deleteSingle(${item.id})" class="text-rose-600 hover:text-rose-800 font-medium">删除</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('filtered-count').innerText = filtered.length;
+      document.getElementById('filtered-sum').innerText = '¥' + filtered.reduce((acc, i) => acc + i.amount, 0).toLocaleString('zh-CN', { minimumFractionDigits: 2 });
+
+      // 更新选中状态条
+      const bulkBar = document.getElementById('bulk-action-bar');
+      if (selectedIds.length > 0) {
+        bulkBar.classList.remove('hidden');
+        bulkBar.classList.add('flex');
+        document.getElementById('selected-count').innerText = selectedIds.length;
+        const selSum = invoices.filter(i => selectedIds.includes(i.id)).reduce((a, b) => a + b.amount, 0);
+        document.getElementById('selected-sum').innerText = '¥' + selSum.toFixed(2);
+      } else {
+        bulkBar.classList.add('hidden');
+        bulkBar.classList.remove('flex');
+      }
+    }
+
+    function toggleSelect(id) {
+      if (selectedIds.includes(id)) {
+        selectedIds = selectedIds.filter(i => i !== id);
+      } else {
+        selectedIds.push(id);
+      }
+      renderTable();
+    }
+
+    function toggleSelectAllFiltered() {
+      const allIds = invoices.map(i => i.id);
+      if (selectedIds.length === allIds.length) {
+        selectedIds = [];
+      } else {
+        selectedIds = [...allIds];
+      }
+      renderTable();
+    }
+
+    function deleteSingle(id) {
+      const item = invoices.find(i => i.id === id);
+      if (!item) return;
+      if (confirm(`确定要删除发票 #${item.id}「${item.label}」吗？金额: ¥${item.amount.toFixed(2)}`)) {
+        invoices = invoices.filter(i => i.id !== id);
+        selectedIds = selectedIds.filter(i => i !== id);
+        saveState();
+      }
+    }
+
+    function batchDeleteSelected() {
+      if (selectedIds.length === 0) return;
+      if (confirm(`确定要删除已选中的 ${selectedIds.length} 笔发票吗？`)) {
+        invoices = invoices.filter(i => !selectedIds.includes(i.id));
+        selectedIds = [];
+        saveState();
+      }
+    }
+
+    function openAddModal() {
+      document.getElementById('modal-add').classList.remove('hidden');
+      document.getElementById('modal-add').classList.add('flex');
+    }
+
+    function closeAddModal() {
+      document.getElementById('modal-add').classList.add('hidden');
+      document.getElementById('modal-add').classList.remove('flex');
+    }
+
+    function handleFormSubmit(e) {
+      e.preventDefault();
+      const label = document.getElementById('add-label').value.trim();
+      const date = document.getElementById('add-date').value.trim();
+      const institution = document.getElementById('add-institution').value.trim();
+      const amount = parseFloat(document.getElementById('add-amount').value) || 0;
+      const summary = document.getElementById('add-summary').value.trim();
+      const attribution = document.getElementById('add-attribution').value;
+      const category = document.getElementById('add-category').value;
+      const notes = document.getElementById('add-notes').value.trim();
+
+      const nextId = invoices.length > 0 ? Math.max(...invoices.map(i => i.id)) + 1 : 1;
+      const newItem = {
+        id: nextId,
+        label,
+        date,
+        institution,
+        category,
+        summary,
+        amount,
+        attribution,
+        notes,
+        status: {
+          med: attribution === 'medical' ? 'reimbursed' : 'not_applicable',
+          comp: attribution === 'company' ? 'reimbursed' : 'not_applicable'
+        }
+      };
+
+      invoices.push(newItem);
+      closeAddModal();
+      saveState();
+    }
+
+    function setAttributionFilter(attr) {
+      currentAttributionFilter = attr;
+      document.querySelectorAll('.attr-btn').forEach(btn => {
+        btn.className = 'attr-btn px-3 py-1.5 font-medium rounded-md text-slate-600 hover:text-slate-900';
+      });
+      document.getElementById('btn-attr-' + attr).className = 'attr-btn px-3 py-1.5 font-medium rounded-md bg-white text-slate-900 shadow-xs';
+      renderTable();
+    }
+
+    function applyFilters() { renderTable(); }
+    function resetFilters() {
+      document.getElementById('filter-search').value = '';
+      document.getElementById('filter-institution').value = 'all';
+      document.getElementById('filter-category').value = 'all';
+      document.getElementById('filter-status').value = 'all';
+      setAttributionFilter('all');
+    }
+
+    function switchTab(tabId) {
+      ['ledger', 'reconciliation'].forEach(t => {
+        document.getElementById('view-' + t).classList.add('hidden');
+        document.getElementById('nav-' + t)?.classList.remove('text-blue-600', 'font-semibold', 'border-blue-600');
+        document.getElementById('nav-' + t)?.classList.add('text-slate-600', 'border-transparent');
+      });
+      document.getElementById('view-' + tabId).classList.remove('hidden');
+      document.getElementById('nav-' + tabId)?.classList.add('text-blue-600', 'font-semibold', 'border-blue-600');
+      document.getElementById('nav-' + tabId)?.classList.remove('text-slate-600', 'border-transparent');
+    }
+
+    function exportCsv() {
+      const headers = ['序号', '发票标识', '日期', '机构', '项目摘要', '金额(元)', '报销归属', '备注'];
+      const rows = invoices.map(i => [i.id, `"${i.label}"`, `"${i.date}"`, `"${i.institution}"`, `"${i.summary}"`, i.amount.toFixed(2), i.attribution, `"${i.notes}"`]);
+      const csvContent = '\uFEFF' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = '医疗费用报销台账.csv';
+      link.click();
+    }
+
+    function resetData() {
+      if (confirm('确定恢复初始真实数据吗？')) {
+        invoices = [...INITIAL_DATA];
+        selectedIds = [];
+        localStorage.removeItem('standalone_invoices_v4');
+        saveState();
+      }
+    }
+
+    // 初始化渲染
+    updateCardStats();
+    renderTable();
+  </script>
+</body>
+</html>
